@@ -337,7 +337,7 @@ export default function App() {
         overflow: "hidden"
       }}
     >
-      anvas ref={cv} />
+      <canvas ref={cv} />
     </div>
   );
 }
