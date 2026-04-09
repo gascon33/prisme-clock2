@@ -318,21 +318,20 @@ export default function App() {
     }
 
     function drawMainMarks() {
-      const marks = [0, 15, 30, 45];
-      for (const v of marks) {
-        const a = rad(angleForValue(v, 60));
-        const r1 = R + R * 0.01;
-        const r2 = R - R * 0.042;
-        ctx.beginPath();
-        ctx.moveTo(cx + r1 * Math.cos(a), cy + r1 * Math.sin(a));
-        ctx.lineTo(cx + r2 * Math.cos(a), cy + r2 * Math.sin(a));
-        ctx.strokeStyle = "#d4a100";
-        ctx.lineWidth = Math.max(2, R * 0.010);
-        ctx.lineCap = "round";
-        ctx.stroke();
-      }
-    }
-
+  const marks = [0, 15, 30, 45];
+  for (const v of marks) {
+    const a = rad(baseAngleForSlot(v, 60));
+    const r1 = R + R * 0.01;
+    const r2 = R - R * 0.042;
+    ctx.beginPath();
+    ctx.moveTo(cx + r1 * Math.cos(a), cy + r1 * Math.sin(a));
+    ctx.lineTo(cx + r2 * Math.cos(a), cy + r2 * Math.sin(a));
+    ctx.strokeStyle = "#d4a100";
+    ctx.lineWidth = Math.max(2, R * 0.01);
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+}
     function drawDigital(hh, mm, ss) {
       const y = cy + R + R * 0.17;
       ctx.textAlign = "center";
