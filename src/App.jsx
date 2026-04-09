@@ -1,4 +1,3 @@
-
 import { useEffect, useRef } from "react";
 
 function getNow() {
@@ -20,26 +19,29 @@ export default function App() {
 
   useEffect(() => {
     const canvas = cv.current;
-    if (!canvas) return; // важная правка: защита от null
+    if (!canvas) return;
 
-    const W = (canvas.width = 400);
-    const H = (canvas.height = 500);
+    const W = (canvas.width = 520);
+    const H = (canvas.height = 700);
     const ctx = canvas.getContext("2d");
-    if (!ctx) return; // вдруг контекст не получился
+    if (!ctx) return;
 
     const cx = W / 2;
-    const cy = H * 0.46;
-    const R = Math.min(W, H * 0.9) * 0.44;
+    const cy = H * 0.42;
+    const R = Math.min(W, H * 0.82) * 0.36;
 
-    const SEC = { iR: R * 0.28, oR: R * 0.96, N: 60 };
-    const MIN = { iR: R * 0.14, oR: R * 0.27, N: 60 };
-    const HR = { iR: R * 0.03, oR: R * 0.13, N: 24 };
+    const rodLen = R * 0.16;
+    const gap = R * 0.035;
+
+    const HR = { iR: R * 0.18, oR: R * 0.18 + rodLen, N: 24 };
+    const MIN = { iR: HR.oR + gap, oR: HR.oR + gap + rodLen, N: 60 };
+    const SEC = { iR: MIN.oR + gap, oR: MIN.oR + gap + rodLen, N: 60 };
 
     function drawRod(angleDeg, iR, oR, N, colTop, colSide, colDark, on) {
       const a = toRad(angleDeg);
       const fill = 0.78;
-      const wI = (2 * Math.PI * iR * fill) / N;
-      const wO = (2 * Math.PI * oR * fill) / N;
+      const wI = ((2 * Math.PI * iR) / N) * fill;
+      const wO = ((2 * Math.PI * oR) / N) * fill;
       const perp = a + Math.PI / 2;
       const pc = Math.cos(perp);
       const ps = Math.sin(perp);
@@ -53,22 +55,17 @@ export default function App() {
         [xi - (wI / 2) * pc, yi - (wI / 2) * ps],
         [xi + (wI / 2) * pc, yi + (wI / 2) * ps],
         [xo + (wO / 2) * pc, yo + (wO / 2) * ps],
-        [xo - (wO / 2) * pc, yo - (wO / 2) * ps]
+        [xo - (wO / 2) * pc, yo - (wO / 2) * ps],
       ];
 
       const depth = 0.45;
+      const g = ctx.createLinearGradient(p[0][0], p[0][1], p[1][0], p[1][1]);
 
-      const g = ctx.createLinearGradient(
-        p[0][0],
-        p[0][1],
-        p[1][0],
-        p[1][1]
-      );
       if (on) {
         g.addColorStop(0, colDark);
-        g.addColorStop(0.3, colTop);
+        g.addColorStop(0.28, colTop);
         g.addColorStop(0.5, "#ffffff");
-        g.addColorStop(0.7, colTop);
+        g.addColorStop(0.72, colTop);
         g.addColorStop(1, colDark);
       } else {
         g.addColorStop(0, colDark);
@@ -76,12 +73,13 @@ export default function App() {
         g.addColorStop(0.6, colSide);
         g.addColorStop(1, colDark);
       }
+
       ctx.beginPath();
       p.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath();
       if (on) {
         ctx.shadowColor = colTop;
-        ctx.shadowBlur = 16;
+        ctx.shadowBlur = 12;
       }
       ctx.fillStyle = g;
       ctx.fill();
@@ -115,18 +113,6 @@ export default function App() {
       rg.addColorStop(1, colTop);
       ctx.fillStyle = rg;
       ctx.fill();
-
-      if (on) {
-        ctx.beginPath();
-        p.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.closePath();
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 0.8;
-        ctx.shadowColor = colTop;
-        ctx.shadowBlur = 20;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
     }
 
     function drawArrow(deg, len, col, lw) {
@@ -140,9 +126,10 @@ export default function App() {
       ctx.lineWidth = lw;
       ctx.lineCap = "round";
       ctx.shadowColor = col;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 6;
       ctx.stroke();
       ctx.shadowBlur = 0;
+
       const ta = a + Math.PI / 2;
       ctx.beginPath();
       ctx.moveTo(ex, ey);
@@ -156,22 +143,37 @@ export default function App() {
       );
       ctx.closePath();
       ctx.fillStyle = col;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 14;
       ctx.fill();
+    }
+
+    function drawScaleNumbers(N, radius, activeIndex, activeColor, passiveColor, fontPx, offsetDeg = -90, every = 1) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${fontPx}px monospace`;
+
+      for (let i = 0; i < N; i += every) {
+        const a = toRad(i * (360 / N) + offsetDeg);
+        const x = cx + radius * Math.cos(a);
+        const y = cy + radius * Math.sin(a);
+        const active = i === activeIndex;
+        ctx.fillStyle = active ? activeColor : passiveColor;
+        ctx.shadowColor = active ? activeColor : "transparent";
+        ctx.shadowBlur = active ? 10 : 0;
+        ctx.fillText(pad(i), x, y);
+      }
       ctx.shadowBlur = 0;
     }
 
-    let rafId;
+    let rafId = 0;
     let gp = 0;
 
     function draw() {
       rafId = requestAnimationFrame(draw);
       ctx.clearRect(0, 0, W, H);
 
-      const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
-      bg.addColorStop(0, "#161628");
-      bg.addColorStop(1, "#050510");
+      const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.65);
+      bg.addColorStop(0, "#ffffff");
+      bg.addColorStop(1, "#e9edf5");
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
 
@@ -184,20 +186,13 @@ export default function App() {
       const hR = (hr + 1) % HR.N;
 
       ctx.beginPath();
-      ctx.arc(cx + 3, cy + 4, R, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.arc(cx + 2, cy + 3, R, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
       ctx.fill();
 
-      const disc = ctx.createRadialGradient(
-        cx - R * 0.15,
-        cy - R * 0.15,
-        R * 0.03,
-        cx,
-        cy,
-        R
-      );
-      disc.addColorStop(0, "#1e1e33");
-      disc.addColorStop(1, "#08081a");
+      const disc = ctx.createRadialGradient(cx - R * 0.15, cy - R * 0.15, R * 0.03, cx, cy, R);
+      disc.addColorStop(0, "#ffffff");
+      disc.addColorStop(1, "#dfe6f0");
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
       ctx.fillStyle = disc;
@@ -210,9 +205,9 @@ export default function App() {
           HR.iR,
           HR.oR,
           HR.N,
-          on ? "#ffdd44" : "#bb8814",
-          on ? "#ffe888" : "#ddaa44",
-          "#664400",
+          on ? "#ffd84a" : "#c7a23a",
+          on ? "#fff2b0" : "#e4c56a",
+          "#7a5c10",
           on
         );
       }
@@ -224,9 +219,9 @@ export default function App() {
           MIN.iR,
           MIN.oR,
           MIN.N,
-          on ? "#ffee55" : "#cc9910",
-          on ? "#fff0aa" : "#eebb44",
-          "#775500",
+          on ? "#5aa0ff" : "#7f96c9",
+          on ? "#dcebff" : "#bccae6",
+          "#4b628b",
           on
         );
       }
@@ -238,87 +233,79 @@ export default function App() {
           SEC.iR,
           SEC.oR,
           SEC.N,
-          on ? "#eef4ff" : "#8899cc",
-          on ? "#ffffff" : "#bbccdd",
-          "#334466",
+          on ? "#ff4a93" : "#c98aa8",
+          on ? "#ffd3e5" : "#e6bfd0",
+          "#8d3d62",
           on
         );
       }
 
       ctx.beginPath();
-      ctx.arc(cx, cy, SEC.iR, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(180,160,100,0.35)";
+      ctx.arc(cx, cy, SEC.iR - R * 0.03, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(150,150,170,0.30)";
       ctx.lineWidth = 1;
       ctx.stroke();
+
       ctx.beginPath();
-      ctx.arc(cx, cy, MIN.iR, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(180,160,100,0.25)";
-      ctx.lineWidth = 0.8;
+      ctx.arc(cx, cy, MIN.iR - R * 0.03, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(150,150,170,0.22)";
+      ctx.lineWidth = 1;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      ctx.strokeStyle = "#8899bb";
+      ctx.strokeStyle = "#bfc7d6";
       ctx.lineWidth = 4;
-      ctx.shadowColor = "#aabbdd";
-      ctx.shadowBlur = 8;
       ctx.stroke();
-      ctx.shadowBlur = 0;
 
       for (let i = 0; i < 24; i++) {
         const a = toRad(i * 15 - 90);
         const maj = i % 6 === 0;
         ctx.beginPath();
         ctx.moveTo(cx + (R + 1) * Math.cos(a), cy + (R + 1) * Math.sin(a));
-        ctx.lineTo(
-          cx + (R - (maj ? 14 : 7)) * Math.cos(a),
-          cy + (R - (maj ? 14 : 7)) * Math.sin(a)
-        );
-        ctx.strokeStyle = maj ? "#ffd700" : "#445566";
-        ctx.lineWidth = maj ? 2.5 : 1;
+        ctx.lineTo(cx + (R - (maj ? 12 : 6)) * Math.cos(a), cy + (R - (maj ? 12 : 6)) * Math.sin(a));
+        ctx.strokeStyle = maj ? "rgba(180,140,40,0.95)" : "rgba(120,130,150,0.50)";
+        ctx.lineWidth = maj ? 2.2 : 1;
         ctx.stroke();
       }
 
-      drawArrow(gapDeg(hr, HR.N) - 90, HR.oR * 0.85, "#ffaa00", 3.5);
-      drawArrow(gapDeg(min, MIN.N) - 90, MIN.oR * 0.85, "#4488ff", 2.5);
-      drawArrow(gapDeg(sec, SEC.N) - 90, SEC.oR * 0.88, "#ff2266", 1.8);
+      drawScaleNumbers(24, SEC.oR + R * 0.12, hr, "#9b6b00", "rgba(130,110,70,0.68)", Math.round(R * 0.07), -90, 1);
+      drawScaleNumbers(60, MIN.oR + R * 0.07, min, "#1d66d1", "rgba(70,95,135,0.48)", Math.round(R * 0.032), -90, 1);
+      drawScaleNumbers(60, HR.iR - R * 0.08, sec, "#d61a67", "rgba(150,90,120,0.45)", Math.round(R * 0.032), -90, 1);
+
+      drawArrow(gapDeg(hr, HR.N) - 90, HR.oR * 0.92, "#d79a00", 3.2);
+      drawArrow(gapDeg(min, MIN.N) - 90, MIN.oR * 0.92, "#2c78ff", 2.3);
+      drawArrow(gapDeg(sec, SEC.N) - 90, SEC.oR * 0.92, "#e61f74", 1.8);
 
       gp += 0.03;
-      const gR = R * 0.036;
-      const gg = ctx.createRadialGradient(
-        cx - gR * 0.35,
-        cy - gR * 0.35,
-        1,
-        cx,
-        cy,
-        gR
-      );
-      gg.addColorStop(0, "#ffffcc");
-      gg.addColorStop(0.4, "#ffcc00");
-      gg.addColorStop(1, "#cc7700");
+      const gR = R * 0.04;
+      const gg = ctx.createRadialGradient(cx - gR * 0.3, cy - gR * 0.3, 1, cx, cy, gR);
+      gg.addColorStop(0, "#fff7cc");
+      gg.addColorStop(0.4, "#ffcf2b");
+      gg.addColorStop(1, "#c48700");
       ctx.beginPath();
       ctx.arc(cx, cy, gR, 0, Math.PI * 2);
       ctx.fillStyle = gg;
-      ctx.shadowColor = "#ffaa00";
-      ctx.shadowBlur = 10 + Math.sin(gp) * 5;
+      ctx.shadowColor = "rgba(255,170,0,0.45)";
+      ctx.shadowBlur = 8 + Math.sin(gp) * 3;
       ctx.fill();
       ctx.shadowBlur = 0;
 
       ctx.textAlign = "center";
       ctx.font = `bold ${Math.round(R * 0.12)}px monospace`;
-      ctx.fillStyle = "#ffffff";
-      ctx.shadowColor = "#3366ff";
-      ctx.shadowBlur = 10;
-      ctx.fillText(`${pad(hr)}:${pad(min)}:${pad(sec)}`, cx, H * 0.88);
+      ctx.fillStyle = "#1a2238";
+      ctx.shadowColor = "rgba(70,110,210,0.18)";
+      ctx.shadowBlur = 8;
+      ctx.fillText(`${pad(hr)}:${pad(min)}:${pad(sec)}`, cx, H * 0.84);
       ctx.shadowBlur = 0;
 
       ctx.font = `${Math.round(R * 0.042)}px sans-serif`;
-      ctx.fillStyle = "rgba(255,200,100,.5)";
-      ctx.fillText("◆ HOURS · MINUTES · SECONDS ◆", cx, H * 0.94);
+      ctx.fillStyle = "rgba(130,95,30,.72)";
+      ctx.fillText("◆ HOURS · MINUTES · SECONDS ◆", cx, H * 0.90);
 
       ctx.font = `${Math.round(R * 0.038)}px sans-serif`;
-      ctx.fillStyle = "rgba(255,255,255,.18)";
-      ctx.fillText("PRISM CLOCK", cx, H * 0.98);
+      ctx.fillStyle = "rgba(40,55,80,.28)";
+      ctx.fillText("PRISM CLOCK", cx, H * 0.95);
     }
 
     draw();
@@ -328,16 +315,24 @@ export default function App() {
   return (
     <div
       style={{
-        background: "#050510",
+        background: "#eef2f8",
         width: "100vw",
         height: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        overflow: "hidden"
+        overflow: "hidden",
       }}
     >
-      <canvas ref={cv} />
+      <canvas
+        ref={cv}
+        style={{
+          width: "min(92vw, 560px)",
+          height: "auto",
+          maxHeight: "96vh",
+          display: "block",
+        }}
+      />
     </div>
   );
 }
