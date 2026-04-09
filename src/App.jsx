@@ -1,228 +1,367 @@
 import { useEffect, useRef } from "react";
 
-function getNow() {
-  const d = new Date();
-  return { hr: d.getHours(), min: d.getMinutes(), sec: d.getSeconds() };
-}
-function toRad(d) {
-  return (d * Math.PI) / 180;
-}
 function pad(n) {
   return String(n).padStart(2, "0");
 }
+function now() {
+  const d = new Date();
+  return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds() };
+}
+function rad(d) {
+  return (d * Math.PI) / 180;
+}
+function mix(a, b, t) {
+  return a + (b - a) * t;
+}
 
 export default function App() {
-  const cv = useRef(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    const canvas = cv.current;
+    const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let raf = 0;
+    let w = 0;
+    let h = 0;
+    let cx = 0;
+    let cy = 0;
+    let R = 0;
+
+    const PETALS = {
+      sec: 61,
+      min: 61,
+      hour: 25,
+    };
+
+    const VALUES = {
+      sec: 60,
+      min: 60,
+      hour: 24,
+    };
+
     function resize() {
       const dpr = window.devicePixelRatio || 1;
-      const cssW = Math.min(window.innerWidth * 0.92, 820);
-      const cssH = Math.min(window.innerHeight * 0.96, 980);
+      const cssW = Math.min(window.innerWidth, 900);
+      const cssH = window.innerHeight;
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssH}px`;
       canvas.width = Math.round(cssW * dpr);
       canvas.height = Math.round(cssH * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      w = cssW;
+      h = cssH;
+      cx = w / 2;
+      R = Math.min(w * 0.43, h * 0.34);
+      cy = Math.max(R + 36, h * 0.40);
     }
 
-    function angle24(v) {
-      return v * 15 + 180;
-    }
-    function angle60(v) {
-      return v * 6 + 180;
+    function angleForValue(v, total) {
+      return -90 + (v * 360) / total;
     }
 
-    function ringText(value, total, radius, size, color, activeColor, activeValue) {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = `${size}px Arial`;
-      for (let i = 0; i < total; i++) {
-        const a = toRad(value(i));
-        const x = cx + radius * Math.cos(a);
-        const y = cy + radius * Math.sin(a);
-        const active = i === activeValue;
-        ctx.fillStyle = active ? activeColor : color;
-        ctx.font = `${active ? "700" : "400"} ${size}px Arial`;
-        ctx.fillText(pad(i), x, y);
+    function angleBetweenPetals(v, total) {
+      const step = 360 / total;
+      return -90 + v * step + step / 2;
+    }
+
+    function drawBackground() {
+      const g = ctx.createRadialGradient(cx, cy - R * 0.2, 0, cx, cy, R * 2.1);
+      g.addColorStop(0, "#101114");
+      g.addColorStop(0.55, "#090a0d");
+      g.addColorStop(1, "#020304");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 120; i++) {
+        const x = (i * 83.7) % w;
+        const y = (i * 57.3) % h;
+        const a = 0.05 + ((i % 5) * 0.02);
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
+        ctx.fillRect(x, y, 1.2, 1.2);
       }
     }
 
-    function drawArrow(deg, len, col, lw) {
-      const a = toRad(deg);
-      const ex = cx + len * Math.cos(a);
-      const ey = cy + len * Math.sin(a);
+    function drawOuterGlow() {
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(ex, ey);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = lw;
-      ctx.lineCap = "round";
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(185,200,255,0.95)";
+      ctx.lineWidth = Math.max(2, R * 0.010);
+      ctx.shadowColor = "rgba(160,185,255,0.85)";
+      ctx.shadowBlur = R * 0.08;
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      const ta = a + Math.PI / 2;
       ctx.beginPath();
-      ctx.moveTo(ex, ey);
-      ctx.lineTo(ex - 18 * Math.cos(a) + 7 * Math.cos(ta), ey - 18 * Math.sin(a) + 7 * Math.sin(ta));
-      ctx.lineTo(ex - 18 * Math.cos(a) - 7 * Math.cos(ta), ey - 18 * Math.sin(a) - 7 * Math.sin(ta));
-      ctx.closePath();
-      ctx.fillStyle = col;
+      ctx.arc(cx, cy, R - R * 0.012, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(225,235,255,0.26)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawMainTicks() {
+      const marks = [0, 15, 30, 45];
+      for (const v of marks) {
+        const a = rad(angleForValue(v, 60));
+        const r1 = R + R * 0.002;
+        const r2 = R - R * 0.035;
+        ctx.beginPath();
+        ctx.moveTo(cx + r1 * Math.cos(a), cy + r1 * Math.sin(a));
+        ctx.lineTo(cx + r2 * Math.cos(a), cy + r2 * Math.sin(a));
+        ctx.strokeStyle = "#ffcf36";
+        ctx.lineWidth = Math.max(2, R * 0.012);
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+    }
+
+    function drawGem(gemR) {
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, gemR * 2.5);
+      glow.addColorStop(0, "rgba(255,208,64,0.9)");
+      glow.addColorStop(0.4, "rgba(255,168,10,0.45)");
+      glow.addColorStop(1, "rgba(255,160,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, gemR * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      const g = ctx.createRadialGradient(cx - gemR * 0.3, cy - gemR * 0.35, gemR * 0.15, cx, cy, gemR);
+      g.addColorStop(0, "#fff7af");
+      g.addColorStop(0.35, "#ffd84d");
+      g.addColorStop(0.65, "#ffb300");
+      g.addColorStop(1, "#ce7a00");
+      ctx.beginPath();
+      ctx.arc(cx, cy, gemR, 0, Math.PI * 2);
+      ctx.fillStyle = g;
       ctx.fill();
     }
 
-    function drawPrismRing(count, innerR, outerR, lineColor, activePair, accentColor, numberMode) {
+    function drawRingNumbers(total, active, radius, size, color, activeColor) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${size}px Arial`;
+
+      for (let i = 0; i < total; i++) {
+        const a = rad(angleForValue(i, total));
+        const x = cx + radius * Math.cos(a);
+        const y = cy + radius * Math.sin(a);
+        const on = i === active;
+        ctx.fillStyle = on ? activeColor : color;
+        ctx.shadowColor = on ? activeColor : "transparent";
+        ctx.shadowBlur = on ? size * 0.8 : 0;
+        ctx.font = `${on ? 700 : 500} ${size}px Arial`;
+        ctx.fillText(pad(i), x, y);
+      }
+      ctx.shadowBlur = 0;
+    }
+
+    function prismMaterial(type, active) {
+      if (type === "sec") {
+        return active
+          ? { light: "rgba(255,186,214,0.96)", mid: "rgba(255,82,162,0.92)", dark: "rgba(120,20,72,0.95)", glow: "rgba(255,84,170,0.55)" }
+          : { light: "rgba(255,206,226,0.78)", mid: "rgba(239,132,183,0.56)", dark: "rgba(92,42,66,0.42)", glow: "transparent" };
+      }
+      if (type === "min") {
+        return active
+          ? { light: "rgba(189,231,255,0.98)", mid: "rgba(78,166,255,0.92)", dark: "rgba(25,74,142,0.96)", glow: "rgba(82,170,255,0.55)" }
+          : { light: "rgba(214,235,255,0.86)", mid: "rgba(157,191,235,0.68)", dark: "rgba(85,106,145,0.48)", glow: "transparent" };
+      }
+      return active
+        ? { light: "rgba(255,243,171,0.98)", mid: "rgba(255,194,48,0.95)", dark: "rgba(147,93,10,0.98)", glow: "rgba(255,188,56,0.45)" }
+        : { light: "rgba(255,242,179,0.88)", mid: "rgba(219,174,71,0.72)", dark: "rgba(115,85,28,0.58)", glow: "transparent" };
+    }
+
+    function drawPetalRing({ count, innerR, outerR, type, activeIndex, activeNext }) {
       const step = 360 / count;
+      const widthFactor = 0.40;
+
       for (let i = 0; i < count; i++) {
-        const a = toRad((numberMode === 24 ? angle24(i) : angle60(i)));
-        const spread = Math.PI / count * 0.72;
-        const p1 = [cx + innerR * Math.cos(a - spread), cy + innerR * Math.sin(a - spread)];
-        const p2 = [cx + innerR * Math.cos(a + spread), cy + innerR * Math.sin(a + spread)];
-        const tip = [cx + outerR * Math.cos(a), cy + outerR * Math.sin(a)];
-        const active = i === activePair[0] || i === activePair[1];
+        const centerDeg = -90 + i * step;
+        const center = rad(centerDeg);
+        const delta = rad(step * widthFactor);
+        const left = center - delta;
+        const right = center + delta;
+
+        const p1 = [cx + innerR * Math.cos(left), cy + innerR * Math.sin(left)];
+        const p2 = [cx + innerR * Math.cos(right), cy + innerR * Math.sin(right)];
+        const p3 = [cx + outerR * Math.cos(right * 0.985 + center * 0.015), cy + outerR * Math.sin(right * 0.985 + center * 0.015)];
+        const tip = [cx + outerR * Math.cos(center), cy + outerR * Math.sin(center)];
+        const p4 = [cx + outerR * Math.cos(left * 0.985 + center * 0.015), cy + outerR * Math.sin(left * 0.985 + center * 0.015)];
+
+        const active = i === activeIndex || i === activeNext;
+        const mat = prismMaterial(type, active);
+
+        const grad = ctx.createLinearGradient(p1[0], p1[1], p2[0], p2[1]);
+        grad.addColorStop(0, mat.dark);
+        grad.addColorStop(0.24, mat.mid);
+        grad.addColorStop(0.52, mat.light);
+        grad.addColorStop(0.78, mat.mid);
+        grad.addColorStop(1, mat.dark);
+
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(p2[0], p2[1]);
+        ctx.lineTo(p3[0], p3[1]);
+        ctx.lineTo(tip[0], tip[1]);
+        ctx.lineTo(p4[0], p4[1]);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        if (active) {
+          ctx.shadowColor = mat.glow;
+          ctx.shadowBlur = R * 0.02;
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
         ctx.beginPath();
         ctx.moveTo(p1[0], p1[1]);
         ctx.lineTo(tip[0], tip[1]);
-        ctx.lineTo(p2[0], p2[1]);
+        ctx.lineTo(p4[0], p4[1]);
         ctx.closePath();
-        ctx.fillStyle = active ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.02)";
+        ctx.fillStyle = active ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.10)";
         ctx.fill();
-        ctx.strokeStyle = active ? accentColor : lineColor;
-        ctx.lineWidth = active ? 2.2 : 1.3;
-        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(p2[0], p2[1]);
+        ctx.lineTo(tip[0], tip[1]);
+        ctx.lineTo(p3[0], p3[1]);
+        ctx.closePath();
+        ctx.fillStyle = active ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.12)";
+        ctx.fill();
       }
     }
 
-    let raf = 0;
-    let cx = 0;
-    let cy = 0;
-    let R = 0;
+    function drawMirrorArrow(angleDeg, len, color, width) {
+      const a = rad(angleDeg);
+      const ex = cx + len * Math.cos(a);
+      const ey = cy + len * Math.sin(a);
 
-    function draw() {
-      raf = requestAnimationFrame(draw);
-      const W = canvas.clientWidth;
-      const H = canvas.clientHeight;
-      ctx.clearRect(0, 0, W, H);
-
-      cx = W / 2;
-      cy = H * 0.46;
-      R = Math.min(W * 0.46, H * 0.38);
-
-      const { hr, min, sec } = getNow();
-
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, "#fbfbf8");
-      bg.addColorStop(1, "#f3f4ef");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, W, H);
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, R + 30, 0, Math.PI * 2);
-      ctx.fillStyle = "#f6f5ef";
-      ctx.fill();
-
-      const dayA1 = toRad(270);
-      const dayA2 = toRad(90);
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + (R + 6) * Math.cos(dayA1), cy + (R + 6) * Math.sin(dayA1));
-      ctx.arc(cx, cy, R + 6, dayA1, dayA2, false);
+      ctx.lineTo(ex, ey);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = width * 2.2;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const pa = a + Math.PI / 2;
+      const head = Math.max(8, width * 2.4);
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - head * Math.cos(a) + head * 0.42 * Math.cos(pa), ey - head * Math.sin(a) + head * 0.42 * Math.sin(pa));
+      ctx.lineTo(ex - head * Math.cos(a) - head * 0.42 * Math.cos(pa), ey - head * Math.sin(a) - head * 0.42 * Math.sin(pa));
       ctx.closePath();
-      ctx.fillStyle = "rgba(215,228,244,0.68)";
+      ctx.fillStyle = color;
       ctx.fill();
+    }
 
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - (R + 6));
-      ctx.lineTo(cx, cy + (R + 6));
-      ctx.strokeStyle = "rgba(180,185,190,0.55)";
-      ctx.setLineDash([5, 5]);
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      const secInner = R * 0.72;
-      const secOuter = R * 0.93;
-      const minInner = R * 0.45;
-      const minOuter = R * 0.67;
-      const hrInner = R * 0.18;
-      const hrOuter = R * 0.36;
-
-      drawPrismRing(60, secInner, secOuter, "rgba(170,170,170,0.60)", [sec, (sec + 1) % 60], "#c51f72", 60);
-      drawPrismRing(60, minInner, minOuter, "rgba(170,170,170,0.60)", [min, (min + 1) % 60], "#2f73eb", 60);
-      drawPrismRing(24, hrInner, hrOuter, "rgba(145,145,145,0.78)", [hr, (hr + 1) % 24], "#e29a08", 24);
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, hrOuter + 2, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,120,120,0.8)";
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, minOuter + 2, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(120,120,120,0.55)";
-      ctx.lineWidth = 3.5;
-      ctx.stroke();
-
-      ringText(i => angle24(i), 24, secOuter + 18, Math.max(10, R * 0.055), "rgba(175,175,175,0.85)", "#b28a2f", hr);
-      ringText(i => angle60(i), 60, secOuter - 16, Math.max(8, R * 0.030), "rgba(165,165,165,0.75)", "#c51f72", sec);
-      ringText(i => angle60(i), 60, minOuter + 14, Math.max(8, R * 0.030), "rgba(165,165,165,0.75)", "#2f73eb", min);
-
+    function drawBottomDigital(hh, mm, ss) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(185,178,165,0.9)";
-      ctx.font = `${Math.max(12, R * 0.07)}px Arial`;
-      ctx.fillText("NIGHT", cx - R * 0.32, cy);
-      ctx.fillStyle = "rgba(150,165,205,0.9)";
-      ctx.fillText("DAY", cx + R * 0.32, cy);
+      const y1 = cy + R + R * 0.18;
+      const y2 = y1 + R * 0.11;
+      ctx.shadowColor = "rgba(180,200,255,0.55)";
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = "#f4f7ff";
+      ctx.font = `700 ${Math.max(28, R * 0.18)}px Arial`;
+      ctx.fillText(`${pad(hh)}:${pad(mm)}:${pad(ss)}`, cx, y1);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(170,175,205,0.22)";
+      ctx.font = `600 ${Math.max(11, R * 0.050)}px Arial`;
+      ctx.fillText("PRISM CLOCK", cx, y2);
+    }
 
-      const labelSize = Math.max(18, R * 0.09);
-      ctx.font = `700 ${labelSize}px Arial`;
-      ctx.fillStyle = "#b68a20";
-      ctx.fillText("06", cx, cy - (R + 26));
-      ctx.fillStyle = "#b68a20";
-      ctx.fillText("12", cx + (R + 28), cy);
-      ctx.fillStyle = "#5879ba";
-      ctx.fillText("18", cx, cy + (R + 26));
-      ctx.fillStyle = "#5a77b8";
-      ctx.fillText("00", cx - (R + 28), cy);
+    function drawFrame() {
+      const t = now();
+      const { h: hh, m: mm, s: ss } = t;
 
-      for (let i = 0; i < 24; i++) {
-        const a = toRad(angle24(i));
-        const maj = i % 6 === 0;
-        ctx.beginPath();
-        ctx.moveTo(cx + (R + 3) * Math.cos(a), cy + (R + 3) * Math.sin(a));
-        ctx.lineTo(cx + (R - (maj ? 15 : 8)) * Math.cos(a), cy + (R - (maj ? 15 : 8)) * Math.sin(a));
-        ctx.strokeStyle = maj ? "rgba(175,160,120,0.9)" : "rgba(180,180,180,0.6)";
-        ctx.lineWidth = maj ? 2 : 1;
-        ctx.stroke();
-      }
+      drawBackground();
 
-      drawArrow(angle24(hr), hrOuter * 0.82, "#e59a09", 4);
-      drawArrow(angle60(min), minOuter * 0.80, "#2f73eb", 3.5);
-      drawArrow(angle60(sec), secOuter * 0.82, "#c51f72", 3.5);
+      const gemR = R * 0.060;
+      const gap1 = R * 0.028;
+      const gap2 = R * 0.022;
+      const gap3 = R * 0.026;
+      const rimGap = R * 0.040;
+      const usable = R - rimGap - gemR - gap1 - gap2 - gap3;
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.max(8, R * 0.03), 0, Math.PI * 2);
-      ctx.fillStyle = "#212121";
-      ctx.fill();
+      const hourDepth = usable * 0.24;
+      const minDepth = usable * 0.27;
+      const secDepth = usable * 0.49;
 
-      ctx.textAlign = "center";
-      ctx.font = `700 ${Math.max(30, R * 0.15)}px monospace`;
-      ctx.fillStyle = "#1c1c24";
-      ctx.fillText(`${pad(hr)}:${pad(min)}:${pad(sec)}`, cx, H * 0.88);
+      const HR = {
+        inner: gemR + gap1,
+        outer: gemR + gap1 + hourDepth,
+      };
+      const MIN = {
+        inner: HR.outer + gap2,
+        outer: HR.outer + gap2 + minDepth,
+      };
+      const SEC = {
+        inner: MIN.outer + gap3,
+        outer: MIN.outer + gap3 + secDepth,
+      };
 
-      ctx.font = `${Math.max(12, R * 0.035)}px Arial`;
-      ctx.fillStyle = "rgba(120,100,55,0.85)";
-      ctx.fillText("◆ HOURS · MINUTES · SECONDS ◆", cx, H * 0.93);
+      drawOuterGlow();
+      drawMainTicks();
+
+      drawPetalRing({
+        count: PETALS.sec,
+        innerR: SEC.inner,
+        outerR: SEC.outer,
+        type: "sec",
+        activeIndex: ss,
+        activeNext: ss + 1,
+      });
+
+      drawPetalRing({
+        count: PETALS.min,
+        innerR: MIN.inner,
+        outerR: MIN.outer,
+        type: "min",
+        activeIndex: mm,
+        activeNext: mm + 1,
+      });
+
+      drawPetalRing({
+        count: PETALS.hour,
+        innerR: HR.inner,
+        outerR: HR.outer,
+        type: "hour",
+        activeIndex: hh,
+        activeNext: hh + 1,
+      });
+
+      drawGem(gemR);
+
+      drawRingNumbers(24, hh, R + R * 0.11, Math.max(13, R * 0.050), "rgba(235,240,255,0.74)", "#ffd24d");
+      drawRingNumbers(60, mm, R + R * 0.065, Math.max(9, R * 0.028), "rgba(205,220,255,0.52)", "#7fd1ff");
+      drawRingNumbers(60, ss, R + R * 0.030, Math.max(9, R * 0.028), "rgba(255,215,232,0.45)", "#ff8bbf");
+
+      const hourArrowLen = mix(HR.inner, HR.outer, 0.70);
+      const minArrowLen = mix(MIN.inner, MIN.outer, 0.77);
+      const secArrowLen = mix(SEC.inner, SEC.outer, 0.88);
+
+      drawMirrorArrow(angleBetweenPetals(hh, VALUES.hour), hourArrowLen, "rgba(255,199,66,0.95)", Math.max(2.2, R * 0.010));
+      drawMirrorArrow(angleBetweenPetals(mm, VALUES.min), minArrowLen, "rgba(115,205,255,0.95)", Math.max(2.0, R * 0.008));
+      drawMirrorArrow(angleBetweenPetals(ss, VALUES.sec), secArrowLen, "rgba(255,118,186,0.95)", Math.max(1.8, R * 0.007));
+
+      drawBottomDigital(hh, mm, ss);
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, w, h);
+      drawFrame();
+      raf = requestAnimationFrame(frame);
     }
 
     resize();
-    draw();
+    frame();
     window.addEventListener("resize", resize);
     return () => {
       cancelAnimationFrame(raf);
@@ -231,8 +370,8 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ width: "100vw", height: "100vh", background: "#f3f4ef", display: "grid", placeItems: "center", overflow: "hidden" }}>
-      <canvas ref={cv} />
+    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", background: "#050608", display: "grid", placeItems: "center" }}>
+      <canvas ref={canvasRef} />
     </div>
   );
 }
